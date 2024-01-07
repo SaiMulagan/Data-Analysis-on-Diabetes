@@ -1,0 +1,643 @@
+---
+title: "Data Analysis on Diabetes"
+author: "Sai Mulagan"
+date: "2023-12-11"
+output: pdf_document
+---
+This project focuses on the analysis of diabetes-related data to gain insights into factors affecting diabetes management. The dataset comprises various variables, including stable glucose levels (stab.glu), HDL cholesterol levels (hdl), glycosylated hemoglobin levels (glyhb), and a target variable glyhb_star representing a measure of diabetes control. The primary objective is to identify the most influential factors associated with glyhb_star and develop a predictive model for assessing diabetes control.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Analysis:
+## Data exploration and data splitting.
+
+## 1.
+In the dataset:
+
+Quantitative Variables: cholesterol levels (chol), stable glucose levels (stab.glu), HDL cholesterol levels (hdl), ratio, glycosylated hemoglobin levels (glyhb), age, height, weight, systolic blood pressure (bp.1s), diastolic blood pressure (bp.1d), waist circumference, hip circumference, and time spent on physical/nutritional planning (time.ppn).
+
+Qualitative Variables: location, gender, and body frame size (frame).
+
+```{r}
+library(ggplot2)
+library(GGally)
+library(dplyr)
+
+diabetes_data <- read.table("diabetes.txt", header = TRUE)
+str(diabetes_data)
+summary(diabetes_data)
+```
+```{r}
+# Identifying quantitative and qualitative variables
+quantitative_vars <- names(diabetes_data)[sapply(diabetes_data, is.numeric)]
+qualitative_vars <- names(diabetes_data)[sapply(diabetes_data, function(x) is.factor(x) | is.character(x))]
+quantitative_vars
+qualitative_vars
+```
+
+
+```{r}
+# Plot histograms for each quantitative variable
+for (var in quantitative_vars) {
+  p <- ggplot(diabetes_data, aes_string(x = var)) + 
+        geom_histogram(bins = 30, fill = "blue", color = "black") +
+        theme_minimal() +
+        ggtitle(paste("Histogram of", var))
+  print(p)
+}
+
+```
+Cholesterol (chol): Appears to have a roughly normal distribution.
+
+Stable Glucose (stab.glu): Skewed to the right, indicating higher values in fewer subjects.
+
+High-Density Lipoprotein (hdl): Right-skewed, similar to stable glucose.
+
+Ratio: Slightly right-skewed.
+
+Glycosolated Hemoglobin (glyhb): Shows a right-skewed distribution, important for diabetes analysis.
+
+Age: Seems fairly uniformly distributed across the range.
+
+Height: Shows a roughly normal distribution.
+
+Weight: Right-skewed, indicating that fewer subjects have higher weight.
+
+Systolic Blood Pressure (bp.1s): Somewhat normal distribution with a slight right skew.
+
+Diastolic Blood Pressure (bp.1d): Also slightly right-skewed.
+
+Waist: Right-skewed, similar to weight.
+
+Hip: Appears roughly normal but with some skewness to the right.
+
+Time in Physical/Physician's Care (time.ppn): Highly right-skewed.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Function to create a pie chart with percentages using ggplot2
+create_pie_chart <- function(data, var_name) {
+    data %>%
+        count(!!sym(var_name)) %>%
+        mutate(perc = n / sum(n) * 100) %>%
+        ggplot(aes(x = "", y = n, fill = !!sym(var_name))) +
+        geom_bar(stat = "identity", width = 1) +
+        coord_polar("y", start = 0) +
+        theme_void() +
+        geom_text(aes(label = paste0(round(perc, 1), "%")), position = position_stack(vjust = 0.5)) +
+        labs(fill = var_name, title = paste("Pie Chart of", var_name))
+}
+
+# Creating pie charts for each qualitative variable
+create_pie_chart(diabetes_data, "location")
+create_pie_chart(diabetes_data, "gender")
+create_pie_chart(diabetes_data, "frame")
+```
+Location: The location data shows that 52.2% of the people are from Louisa and 47.8% from Buckingham. This means a little more than half of the people in the study are from Louisa. It's good that there is equal representation in the study.
+
+Gender: There are more women than men. 58.5% of the participants are female, and 41.5% are male.
+
+Frame: The body frame data shows that 47% of people have a large frame, while both small and medium frames are almost equally represented at around 26% each. This means almost half of the people in the study have a large body frame. This information is useful, especially when looking at how body size relates to diabetes.
+
+
+```{r}
+
+library(GGally)
+library(ggplot2)
+
+# Select only quantitative variables for the scatterplot matrix
+quantitative_vars <- diabetes_data[, c("chol", "stab.glu", "hdl", "ratio", "glyhb", 
+                                       "age", "height", "weight", "bp.1s", "bp.1d", 
+                                       "waist", "hip", "time.ppn")]
+
+# Generating the scatterplot matrix
+ggpairs(quantitative_vars, 
+        lower = list(continuous = wrap("points", size = .01)), 
+        diag = list(continuous = wrap("densityDiag", size = .1)))
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(magrittr)
+
+# Select only quantitative variables for the correlation matrix
+quantitative_vars <- diabetes_data[, c("chol", "stab.glu", "hdl", "ratio", "glyhb", 
+                                       "age", "height", "weight", "bp.1s", "bp.1d", 
+                                       "waist", "hip", "time.ppn")]
+
+# Compute the correlation matrix
+cor_matrix <- cor(quantitative_vars, use = "complete.obs")
+
+# Create a dataframe from the correlation matrix
+cor_df <- as.data.frame(as.table(cor_matrix))
+
+# Reverse the order of variables on the y-axis
+cor_df$Var2 <- factor(cor_df$Var2, levels = rev(unique(cor_df$Var2)))
+
+# Plot using ggplot2
+ggplot(cor_df, aes(Var1, Var2, fill = Freq)) +
+    geom_tile(color = "white") +
+    geom_text(aes(label = sprintf("%.2f", Freq)), size = 2, color = "black") +  
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                         midpoint = 0, limit = c(-1,1), space = "Lab", 
+                         name="Correlation") +
+    theme_minimal() +
+    coord_fixed() +
+    labs(x='', y='', title='Correlation Matrix') +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.text.y = element_text(angle = 45, hjust = 1))
+
+```
+Strong Correlations: Some variables exhibit strong correlations with each other. For example, variables related to body measurements such as weight, waist, and hip sizes are strongly correlated. Similarly, blood pressure measurements (bp.1s and bp.1d for systolic and diastolic pressure, respectively) also show strong correlation.
+
+Weak or No Correlation: Some variables may show weak or negligible correlation with each other. This could suggest that these variables do not share a linear relationship or their relationship is influenced by other factors not captured in this dataset. An example of this is Time in Physical/Physician’s Care (time.ppn).
+
+Correlation with Glyhb (glyhb): Since glyhb is the response variable for diabetes diagnosis, its correlation with other variables is  important. Variables with higher absolute correlation values might be more predictive of glyhb. However, it's important to remember that correlation does not imply causation.
+
+
+## 2.
+
+```{r}
+
+# Fit the model
+model1 <- lm(glyhb ~ ., data = diabetes_data)
+
+# Scatter plot of fitted values vs glyhb
+gg1 <- ggplot(diabetes_data, aes(x = fitted(model1), y = glyhb)) + 
+  geom_point() + 
+  xlab("Fitted Values") + 
+  ylab("Glyhb")
+
+# Q-Q plot of residuals
+gg2 <- ggplot(data.frame(resid = resid(model1)), aes(sample = resid)) +
+  stat_qq() + 
+  stat_qq_line()
+
+# Histogram of residuals
+gg3 <- ggplot(data.frame(resid = resid(model1)), aes(x = resid)) + 
+  geom_histogram(bins = 15, color = "black", fill = "white") +
+  xlab("Residuals") + 
+  ylab("Count")
+
+# Residuals vs Age
+gg4 <- ggplot(diabetes_data, aes(x = age, y = resid(model1))) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = 0), color = "red") +
+  xlab("Age") +
+  ylab("Residuals")
+
+# Arrange the plots
+ggarrange(gg1, gg2, gg3, gg4, nrow = 2, ncol = 2)
+
+
+```
+The residuals do not look homoskedastic as their widths change over the domain. There is also a pattern in the residuals so model could be systematically making errors. The histogram of residuals slightly deviates from a normal distribution as the right tail is a bit heavy relative to the center. The normal QQ plot is nearly linear.
+
+## 3.
+
+```{r}
+library(MASS)
+
+# Box-Cox transformation for Model 1
+model1 <- lm(glyhb ~ ., data=diabetes_data)
+boxcox_result <- boxcox(model1)
+
+# Best lambda for transformation
+best_lambda <- boxcox_result$x[which.max(boxcox_result$y)]
+
+# Since best_lambda is approximately -0.9, use the general Box-Cox transformation
+diabetes_data$glyhb_star <- (diabetes_data$glyhb^best_lambda - 1) / best_lambda
+
+# Fit Model 2 with the transformed response variable
+model2 <- lm(glyhb_star ~ ., data=diabetes_data)
+
+# Summary of Model 2
+summary(model2)
+
+# Diagnostic plots for Model 2
+par(mfrow=c(2,2))
+plot(model2)
+
+# Apply Box-Cox on Model 2
+boxcox_result_model2 <- boxcox(model2)
+
+
+```
+I decided to use an inverse transformation on glyhb after running the Box-Cox test. The test gave a lambda value close to -0.9. 
+
+Lambda Value: The test's lambda value near -.9 tells us that changing glyhb a bit can help our model. Specifically, it suggests using an inverse transformation.
+
+The Transformation: Because lambda is about -1, we use the transformation ((glyhb^-0.9) - 1)/-0.9.This helps especially when glyhb values are not spread out evenly. It can make the data more balanced. The main reason for this change is to make our model better. We want the relationship between glyhb and other factors to be clear and consistent. This transformation helps achieve that.
+
+## 4.
+
+```{r}
+
+set.seed(372)  # Setting seed for reproducibility
+train_indices <- sample(1:nrow(diabetes_data), size = 0.7 * nrow(diabetes_data))
+train_data <- diabetes_data[train_indices, ]
+test_data <- diabetes_data[-train_indices, ]
+
+# Apply the Box-Cox transformation to glyhb in both train_data and test_data
+best_lambda <- -0.9  
+train_data$glyhb_star <- (train_data$glyhb^best_lambda - 1) / best_lambda
+test_data$glyhb_star <- (test_data$glyhb^best_lambda - 1) / best_lambda
+
+
+```
+
+## Selection of first-order effects
+
+## 5.
+```{r}
+
+# Fit Model 3 with all first-order effects
+model3 <- lm(glyhb_star ~ ., data=train_data) # Using the training data
+
+# Summary of Model 3
+summary(model3)
+
+# Calculate the number of regression coefficients (including the intercept)
+num_coefficients <- length(coef(model3))
+
+# Calculate the MSE for Model 3
+predictions_model3 <- predict(model3, newdata=test_data)
+mse_model3 <- mean((test_data$glyhb_star - predictions_model3)^2)
+
+# Display the number of coefficients and the MSE
+num_coefficients
+mse_model3
+
+```
+The model includes coefficients for each predictor variable plus an intercept. Counting the coefficients, including the intercept, there are 18 coefficients in total. This count matches the output, showing that there are 17 predictor variables and 1 intercept.
+
+Mean Squared Error (MSE): The MSE calculated for Model 3 is 0.00051628. A lower MSE value generally indicates a better fit of the model to the data.
+
+## 6.
+
+```{r}
+library(leaps)
+
+# Rename columns to Y, X1, X2, etc.
+names(train_data) = c("Y", paste0("X", 1:(ncol(train_data)-1)))
+
+# Fit all possible models
+all_models <- regsubsets(Y ~ ., data=train_data, nbest=1, nvmax=20)
+
+# Summarize the models
+model_summary <- summary(all_models)
+model_variables <- c("Y", colnames(model_summary$which)[-1])
+num_obs <- nrow(train_data) # Number of observations
+num_models <- nrow(model_summary$which) # Number of models
+
+# Create a readable summary
+readable_summary <- lapply(1:num_models, function(i) {
+  included_variables <- paste(model_variables[model_summary$which[i,]], collapse=", ")
+  num_predictors <- sum(model_summary$which[i,]) # Number of predictors
+  model_R2 <- model_summary$rsq[i]
+  model_AdjR2 <- model_summary$adjr2[i]
+  model_BIC <- model_summary$bic[i]
+  model_AIC <- model_summary$bic[i] - (log(num_obs) * num_predictors) + 2 * num_predictors
+  model_CP <- model_summary$cp[i]
+  summary_data <- data.frame(Model=included_variables, Predictors=num_predictors, R2=model_R2, AdjR2=model_AdjR2, CP=model_CP, AIC=model_AIC, BIC=model_BIC)
+  return(summary_data)
+})
+readable_summary <- do.call(rbind, readable_summary)
+
+# Statistics for the intercept-only model
+intercept_model <- lm(Y ~ 1, data=train_data)
+intercept_sse <- sum(residuals(intercept_model)^2)
+intercept_R2 <- summary(intercept_model)$r.squared
+intercept_AdjR2 <- summary(intercept_model)$adj.r.squared
+intercept_AIC <- log(intercept_sse/num_obs) * num_obs + 2 * 1
+intercept_BIC <- log(intercept_sse/num_obs) * num_obs + log(num_obs) * 1
+
+intercept_summary <- data.frame(Model="Intercept Only", Predictors=0, R2=intercept_R2, AdjR2=intercept_AdjR2, CP=NA, AIC=intercept_AIC, BIC=intercept_BIC)
+readable_summary <- rbind(intercept_summary, readable_summary)
+readable_summary
+```
+Best AIC: The model with the best AIC includes the predictors Y, X1, X2, X3, X4, X5Louisa, X8, and X10small. It has 8 predictors.
+
+Best BIC: The model with the best BIC includes the predictors Y, X2, X3, and X5Louisa. It has 4 predictors.
+
+Best Adjusted R-squared: The model with the highest adjusted R-squared includes the predictors Y, X1, X2, X3, X4, X5Louisa, X9, X10small, X14, and X16. It has 10 predictors and an adjusted R-squared of 0.7460.
+
+Best R-squared: The model with the highest R-squared includes the predictors Y, X1, X2, X3, X4, X5Louisa, X6, X7male, X8, X9, X10medium, X10small, X11, X12, X13, X14, X15, and X16. It has 18 predictors and an R-squared of 0.7574.
+
+For the best model according to Mallows' Cp criterion, the selected model includes the variables "Y, X1, X2, X3, X4, X5Louisa" with 6 predictors. The best model according to Mallows' Cp criterion includes six predictors, as indicated by a Cp value of 6.628773. This value, being slightly above 6, suggests the model strikes a good balance in terms of complexity and predictive accuracy. It's neither too complex to risk overfitting nor too simple to miss key patterns in the data.
+
+
+
+## Selection of first-order and interactions effects 
+
+## 8.
+```{r}
+
+# Split the data into training and testing sets
+set.seed(372)  # Setting seed for reproducibility
+train_indices <- sample(1:nrow(diabetes_data), size = 0.7 * nrow(diabetes_data))
+train_data <- diabetes_data[train_indices, ]
+test_data <- diabetes_data[-train_indices, ]
+
+# Apply the Box-Cox 
+best_lambda <- -0.9  
+train_data$glyhb_star <- (train_data$glyhb^best_lambda - 1) / best_lambda
+test_data$glyhb_star <- (test_data$glyhb^best_lambda - 1) / best_lambda
+
+
+model_4 <- lm(glyhb_star ~ (chol + stab.glu + hdl + ratio + age + height + weight + bp.1s + bp.1d + waist + hip + time.ppn)^2, data = train_data)
+
+
+# Summary of Model 4
+summary_model_4 <- summary(model_4)
+
+# Number of regression coefficients
+num_coefficients <- length(coef(model_4))
+
+# Calculate MSE for Model 4 using test_data
+predictions_model_4 <- predict(model_4, newdata = test_data)
+mse_model_4 <- mean((test_data$glyhb_star - predictions_model_4)^2)
+
+# Print
+cat("Number of Coefficients in Model 4:", num_coefficients, "\n")
+cat("MSE of Model 4:", mse_model_4, "\n")
+```
+A model with a large number of predictors, especially one that includes many interaction terms, can lead to overfitting. This means that the model might not do well when testing it with unseen data. With so many coefficients (79), the model is very complex. This makes it hard to understand what's really affecting the outcome.
+
+## 7.
+```{r}
+### For some reason it only works if 8 is before 7 
+
+model_3_1 <- lm(glyhb_star ~ chol + stab.glu + hdl + ratio + glyhb + weight + bp.1d, data = train_data)
+model_3_2 <- lm(glyhb_star ~ stab.glu + hdl + glyhb, data = train_data)
+model_3_3 <- lm(glyhb_star ~ chol + stab.glu + hdl + ratio + glyhb + bp.1s + bp.1d, data = train_data)
+```
+
+## 9.
+
+```{r}
+library(glmnet)
+
+x_train <- as.matrix(train_data[, -which(names(train_data) == "glyhb_star")])  
+y_train <- train_data$glyhb_star
+
+# Fit ridge regression model with cross-validation
+grid <- 10^seq(2, -2, length = 5)
+cv_ridge <- cv.glmnet(x_train, y_train, alpha = 0, lambda = grid, standardize = TRUE)
+
+
+best_lambda <- cv_ridge$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+
+# Fit the final model with the selected lambda
+model_4_1 <- glmnet(x_train, y_train, alpha = 0, lambda = best_lambda, standardize = TRUE)
+
+# Number of predictors in the model
+num_predictors <- sum(coef(model_4_1) != 0) - 1  # Subtracting 1 to exclude the intercept
+cat("Number of predictors in Model 4.1:", num_predictors, "\n")
+
+```
+Best lambda: 0.01, this model has 13 predictors.
+
+## 10.
+
+```{r}
+library(glmnet)
+
+# Prepare the data
+x_train <- as.matrix(train_data[, -which(names(train_data) == "glyhb_star")])  # Exclude the response variable
+y_train <- train_data$glyhb_star
+
+# Fit LASSO model with cross-validation
+grid <- 10^seq(2, -2, length = 5)
+cv_lasso <- cv.glmnet(x_train, y_train, alpha = 1, lambda = grid, standardize = TRUE)
+
+# Best lambda value
+best_lambda <- cv_lasso$lambda.min
+cat("Best lambda:", best_lambda, "\n")
+
+# Fit the final model with the selected lambda
+model_4_2 <- glmnet(x_train, y_train, alpha = 1, lambda = best_lambda, standardize = TRUE)
+
+# Get non-zero coefficients (selected predictors)
+lasso_coef <- coef(model_4_2, s = best_lambda)
+selected_predictors <- rownames(lasso_coef)[lasso_coef[,1] != 0]
+
+# Print the selected predictors
+cat("Selected predictors in Model 4.2:", selected_predictors, "\n")
+
+# Count the number of selected predictors
+num_predictors <- length(selected_predictors) - 1  # Subtracting 1 for intercept
+cat("Number of predictors in Model 4.2:", num_predictors, "\n")
+
+```
+
+The output indicating that only glyhb is selected as a predictor in Model 4.2 (with best_lambda = 0.01) suggests that LASSO has shrunk the coefficients of other predictors to zero, leaving glyhb as the sole significant predictor.
+
+## 11.
+The main reason Ridge and LASSO give you different models is because of how they deal with predictors. Ridge regression tends to shrink the impact of each predictor a bit but keeps them all in the model. On the other hand, LASSO can completely remove some predictors by reducing their impact to zero. This means LASSO can give you a simpler model by getting rid of predictors that don't do much. Ridge, however, might give you a model with more predictors, each having a small effect.
+
+## Model validation
+
+## 12.
+
+```{r}
+calculate_PRESS <- function(model_fit, data, model_type, lambda = NULL) {
+  n <- nrow(data)
+  press <- 0
+
+  for (i in 1:n) {
+    train_data <- data[-i, ]
+    test_data <- data[i, ]
+
+    # Fit the model on training data
+    if (model_type == "linear") {
+      fit <- update(model_fit, data = train_data)
+    } else if (model_type == "ridge" || model_type == "lasso") {
+      x_train <- model.matrix(~ . - 1, data = train_data[, -which(names(train_data) == "glyhb_star")])
+      y_train <- train_data$glyhb_star
+      fit <- glmnet(x_train, y_train, alpha = ifelse(model_type == "ridge", 0, 1), lambda = lambda, standardize = TRUE)
+    }
+
+    # Predict on the test data
+    if (model_type == "linear") {
+      prediction <- predict(fit, newdata = test_data)
+    } else {
+      x_test <- model.matrix(~ . - 1, data = test_data[, -which(names(test_data) == "glyhb_star")])
+      prediction <- predict(fit, s = lambda, newx = x_test)
+    }
+
+    # Calculate and add the squared residual
+    press <- press + (test_data$glyhb_star - prediction)^2
+  }
+
+  return(press)
+}
+
+
+press_3_1 <- calculate_PRESS(model_3_1, train_data, "linear")
+press_3_2 <- calculate_PRESS(model_3_2, train_data, "linear")
+press_3_3 <- calculate_PRESS(model_3_3, train_data, "linear")
+
+press_3_1
+press_3_2
+press_3_3
+```
+```{r}
+library(glmnet)
+
+# Function to calculate PRESS for Ridge or LASSO
+calculate_PRESS_glmnet <- function(x, y, alpha, lambda) {
+  n <- nrow(x)
+  press <- 0
+
+  for (i in 1:n) {
+    # Create training and test sets
+    x_train <- x[-i, , drop = FALSE]
+    y_train <- y[-i]
+    x_test <- x[i, , drop = FALSE]
+    y_test <- y[i]
+
+    # Fit the model on training data
+    fit <- glmnet(x_train, y_train, alpha = alpha, lambda = lambda, standardize = TRUE)
+
+    # Predict on the test data
+    prediction <- predict(fit, s = lambda, newx = x_test)
+
+    # Calculate and add the squared residual
+    press <- press + (y_test - prediction)^2
+  }
+
+  return(press)
+}
+
+# Preparing the data
+x_train <- model.matrix(~ . - 1, data = train_data[, -which(names(train_data) == "glyhb_star")])
+y_train <- train_data$glyhb_star
+
+lambda_ridge <- 0.01 
+lambda_lasso <- 0.01 
+
+# Calculating PRESS for Ridge and LASSO
+press_ridge <- calculate_PRESS_glmnet(x_train, y_train, alpha = 0, lambda = lambda_ridge)
+press_lasso <- calculate_PRESS_glmnet(x_train, y_train, alpha = 1, lambda = lambda_lasso)
+
+print(press_ridge)
+print(press_lasso)
+
+```
+The PRESS results show that the basic models (3.1, 3.2, and 3.3) predict a bit better than the more complex ridge (4.1) and LASSO (4.2) models. Model 3.1 is the best among them. 
+
+## 13.
+
+```{r}
+# Function to calculate MSPE, adjusted for glmnet models
+calculate_MSPE <- function(model, test_data, model_type = "linear", lambda = NULL) {
+  if (model_type == "linear") {
+    predictions <- predict(model, newdata = test_data)
+  } else {
+    # For glmnet models (ridge and lasso)
+    x_test <- model.matrix(~ . - 1, data = test_data[, -which(names(test_data) == "glyhb_star")])
+    predictions <- predict(model, s = lambda, newx = x_test)
+  }
+  mean((test_data$glyhb_star - predictions)^2)
+}
+
+# Calculate MSPE for each model
+mspe_3_1 <- calculate_MSPE(model_3_1, test_data)
+mspe_3_2 <- calculate_MSPE(model_3_2, test_data)
+mspe_3_3 <- calculate_MSPE(model_3_3, test_data)
+
+# Print MSPE values
+print(mspe_3_1)
+print(mspe_3_2)
+print(mspe_3_3)
+```
+```{r}
+# For some reason model_4_1 and model_4_2 were not working
+model_4_1 <- glmnet(x_train, train_data$glyhb_star, alpha = 0, lambda = 0.01)
+model_4_2 <- glmnet(x_train, train_data$glyhb_star, alpha = 1, lambda = 0.01)
+```
+
+
+```{r}
+x_train <- model.matrix(~ . - 1, data = train_data[, -which(names(train_data) == "glyhb_star")])
+x_test <- model.matrix(~ . - 1, data = test_data[, -which(names(test_data) == "glyhb_star")])
+
+# Function to calculate MSPE for glmnet models
+calculate_MSPE_glmnet <- function(model, x_test, y_test, lambda) {
+  predictions <- predict(model, s = lambda, newx = x_test)
+  mean((y_test - predictions)^2)
+}
+
+lambda_ridge <- 0.01
+lambda_lasso <- 0.01
+
+# Calculate MSPE for glmnet models (ridge and lasso)
+mspe_4_1 <- calculate_MSPE_glmnet(model_4_1, x_test, test_data$glyhb_star, lambda_ridge)
+mspe_4_2 <- calculate_MSPE_glmnet(model_4_2, x_test, test_data$glyhb_star, lambda_lasso)
+
+# Print MSPE values for ridge and lasso
+print(mspe_4_1)
+print(mspe_4_2)
+
+```
+
+```{r}
+# Calculating PRESS/n for each model
+press_n_3_1 <- 0.1508137 / 256
+press_n_3_2 <- 0.1536222 / 256
+press_n_3_3 <- 0.152405 / 256
+press_n_4_1 <- 0.164521 / 256
+press_n_4_2 <- 0.1787609 / 256
+
+# MSPE values provided
+mspe_3_1 <- 0.0005557647
+mspe_3_2 <- 0.000500681
+mspe_3_3 <- 0.000534383
+mspe_4_1 <- 0.0005052064
+mspe_4_2 <- 0.0005096565
+
+# Printing PRESS/n values
+cat("PRESS/n for Model 3.1:", press_n_3_1, "\n")
+cat("PRESS/n for Model 3.2:", press_n_3_2, "\n")
+cat("PRESS/n for Model 3.3:", press_n_3_3, "\n")
+cat("PRESS/n for Model 4.1:", press_n_4_1, "\n")
+cat("PRESS/n for Model 4.2:", press_n_4_2, "\n")
+
+# Printing MSPE values
+cat("MSPE for Model 3.1:", mspe_3_1, "\n")
+cat("MSPE for Model 3.2:", mspe_3_2, "\n")
+cat("MSPE for Model 3.3:", mspe_3_3, "\n")
+cat("MSPE for Model 4.1:", mspe_4_1, "\n")
+cat("MSPE for Model 4.2:", mspe_4_2, "\n")
+
+# Identifying model with the smallest MSPE
+smallest_mspe <- min(mspe_3_1, mspe_3_2, mspe_3_3, mspe_4_1, mspe_4_2)
+cat("Smallest MSPE is:", smallest_mspe, "\n")
+
+```
+Model 3.2 has the smallest MSPE.
+When comparing MSPE values with their respective PRESS/n, we see that all models have MSPE values that are generally in line with their PRESS/n, indicating consistent performance across training and test datasets.
+
+## 14.
+Model 3.2 had the smallest MSPE, indicating it performed best on the test set.
+The PRESS/n values for Model 3.2 were not the lowest but were comparable to the other models.
+Given this information, Model 3.2 seems like a good choice as the final model, as it strikes a balance between internal and external validation metrics.
+
+```{r}
+model_5 <- lm(glyhb_star ~ stab.glu + hdl + glyhb, data = diabetes_data)
+
+# Getting the summary of the model
+summary(model_5)
+```
+
+The model fits the data well, explaining about 85% of the variation in glyhb_star. The F-test is highly significant (p-value < 2.2e-16), suggesting that the model is statistically significant and better than a model with no predictors. This suggests it's a strong model for understanding factors affecting glyhb_star, which is important in diabetes research. The statistical significance of the findings indicates that the observed relationships between stable glucose, HDL cholesterol, glycosylated hemoglobin, and glyhb_star are unlikely to be due to chance.
